@@ -28,7 +28,13 @@ temp <- dk %>%
   filter(!is.na(imueclt)) %>%
   mutate(cultural_treat = unlist(lapply(imueclt, function(x){return(10 - x)}))) %>%
   mutate(general_treat = unlist(lapply(imwbcnt, function(x){return(10 - x)}))) %>%
-  filter(!is.na(contact)) 
+  mutate(lrscale_dummy = case_when(lrscale <= 4 ~ "Left",
+                                   lrscale > 4 & lrscale <= 7 ~ "Middle",
+                                   lrscale > 7 ~ "Right")) %>%
+  filter(!is.na(contact)) %>%
+  filter(!is.na(lrscale))
+
+  
 
 
 p <- ggplot(data = temp,aes(y = cultural_treat, x = contact, weight = pspwght, alpha=pspwght)) +
@@ -38,13 +44,34 @@ p <- ggplot(data = temp,aes(y = cultural_treat, x = contact, weight = pspwght, a
   scale_x_continuous(breaks=c(0,1), expand=c(0.2,0.2)) +
   scale_y_continuous(breaks=seq(0,10)) +
   theme_light() + 
+  guides(alpha = "none") +
   theme(legend.position = "none",
         text=element_text(family="serif"),
         axis.title=element_text(size=14,face="bold"),
         panel.grid.minor = element_blank(),
         panel.grid.major = element_blank()) 
 p
-ggsave("plot.png", dpi = 500)
+ggsave("plot1.png", dpi = 500)
+
+
+
+
+p <- ggplot(data = temp,aes(y = cultural_treat, x = contact, weight = pspwght, color=lrscale_dummy, fill=lrscale_dummy, alpha=pspwght)) +
+  geom_jitter(width = 0.1, height = 0.3) +
+  geom_smooth(method = "lm", formula = "y ~ x") + 
+  labs(y = "Cultural xenophobic threat", x = "Having friends from minority race or ethnic group") +
+  scale_x_continuous(breaks=c(0,1), expand=c(0.2,0.2)) +
+  scale_y_continuous(breaks=seq(0,10)) +
+  theme_light() + 
+  scale_color_manual(values=c("#FF0000","#808080","#0000FF")) +
+  guides(alpha = "none") +
+  theme(legend.title = element_blank(),
+        text=element_text(family="serif"),
+        axis.title=element_text(size=14,face="bold"),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank()) 
+p
+ggsave("plot2.png", dpi = 500)
 
 
 
@@ -65,13 +92,13 @@ screenreg(model, include.ci = FALSE, digits = 3)
 # OLS with controls for education and age
 
 model <- lm_robust(
-  formula = cultural_treat ~ contact + eisced + agea, 
+  formula = cultural_treat ~ contact + eisced + agea + lrscale + contact*lrscale, 
   data=temp, 
   weight = pspwght
 )
 screenreg(model, include.ci = FALSE, digits = 3)
-htmlreg(model, file="reg_output.html", include.ci = FALSE, digits = 3)
 
+htmlreg(model, file="reg_output.html", include.ci = FALSE, digits = 3)
 
 
 
