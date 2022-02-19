@@ -1,6 +1,10 @@
 # Mac specific files
 .DS_Store
 
+# other files
+.png
+.html
+
 # History files
 .Rhistory
 .Rapp.history
@@ -40,3 +44,4 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+

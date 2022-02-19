@@ -3,7 +3,7 @@
 
 rm(list = ls())
 options(scipen=999)
-pacman::p_load("haven","dplyr","estimatr","texreg", "essurvey","ggplot2")
+pacman::p_load("haven","dplyr","estimatr","texreg", "essurvey","ggplot2","stats","factoextra","rmarkdown")
 
 
 
@@ -27,6 +27,7 @@ temp <- dk %>%
   mutate(racism = smegbli + smegbhw + smctmbe) %>% 
   filter(!is.na(imueclt)) %>%
   mutate(cultural_treat = unlist(lapply(imueclt, function(x){return(10 - x)}))) %>%
+  mutate(general_treat = unlist(lapply(imwbcnt, function(x){return(10 - x)}))) %>%
   filter(!is.na(contact)) 
 
 
@@ -38,11 +39,19 @@ p <- ggplot(data = temp,aes(y = cultural_treat, x = contact, weight = pspwght, a
   scale_y_continuous(breaks=seq(0,10)) +
   theme_light() + 
   theme(legend.position = "none",
+        text=element_text(family="serif"),
+        axis.title=element_text(size=14,face="bold"),
         panel.grid.minor = element_blank(),
         panel.grid.major = element_blank()) 
 p
+ggsave("plot.png", dpi = 500)
 
-# OLS with controls for education and age
+
+
+
+
+
+# OLS 
 
 model <- lm_robust(
   formula = cultural_treat ~ contact, 
@@ -61,16 +70,10 @@ model <- lm_robust(
   weight = pspwght
 )
 screenreg(model, include.ci = FALSE, digits = 3)
+htmlreg(model, file="reg_output.html", include.ci = FALSE, digits = 3)
 
 
-# OLS with perceived country homogeneity
 
-model <- lm_robust(
-  formula = cultural_treat ~ contact + eisced + agea, 
-  data=temp, 
-  weight = pspwght
-)
-screenreg(model, include.ci = FALSE, digits = 3)
 
 
 

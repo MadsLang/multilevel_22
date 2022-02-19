@@ -67,3 +67,25 @@ screenreg(model1, digits = 3, include.ci = FALSE)
 
 model2 <- lm_robust(outcome ~ lowskill + education*lowskill, reg_df)
 screenreg(model2, digits = 3, include.ci = FALSE)
+
+
+
+
+# PCA 
+X <- temp %>%
+  select(ppltrst,pplfair,pplhlp) %>%
+  remove_missing(vars = ppltrst,pplfair,pplhlp)
+
+pca_result <- prcomp(X, scale = FALSE)
+
+fviz_eig(pca_result, barfill="white", barcolor ="darkblue") + theme_light()
+
+
+
+new_cols <- data.frame(get_pca_ind(pca_result)$contrib)
+
+temp <- bind_cols(temp %>%
+                    remove_missing(vars = c("ppltrst","pplfair","pplhlp")),new_cols)
+
+
+
