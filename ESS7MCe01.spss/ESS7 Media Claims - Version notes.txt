@@ -1,0 +1,6 @@
+ESS7 Media Claims data, edition 1.0 (published 08.07.2016):
+
+Changes in variables:
+
+Issueparty_b replaces Issueparty and contains the full party name in the string.
+Actparty replaces actpartys and contains the full party name in the string. 
