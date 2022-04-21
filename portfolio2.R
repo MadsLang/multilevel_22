@@ -2,10 +2,11 @@
 
 rm(list = ls())
 options(scipen=999)
+devtools::install_github("melff/iimm")
 pacman::p_load("haven","dplyr","estimatr","texreg",
                "essurvey","ggplot2","stats","factoextra","rmarkdown",
                "lme4","readxl","countrycode","RColorBrewer","sjPlot", 
-               "tidyverse","ggrepel","influence.ME", "cowplot","broom.mixed")
+               "tidyverse","ggrepel","influence.ME", "cowplot","broom.mixed","iimm")
 source("utils.R")
 
 mycolors = c(brewer.pal(name="Dark2", n = 8), brewer.pal(name="Paired", n = 6), brewer.pal(name="Accent", n = 8))
@@ -23,6 +24,7 @@ mycolors = c(brewer.pal(name="Dark2", n = 8), brewer.pal(name="Paired", n = 6), 
 # press_df <- read_excel("All_data_FIW_2013-2022.xlsx", sheet="FIW13-22", skip=1) %>%
 #   mutate(cntry = countrycode(`Country/Territory`, "country.name", "iso2c")) %>%
 #   filter(Edition == 2014)
+
 
 
 media_claims <- as.data.frame(read_sav("data/ESS7MCe01.spss/ESS7MCe01.sav")) %>%
@@ -62,7 +64,17 @@ media_claims <- as.data.frame(read_sav("data/ESS7MCe01.spss/ESS7MCe01.sav")) %>%
     share_culturaldiversity_claims = sum(issue_culturaldiversity) / n(),
     culturaldiversity_mean_direction = mean(direction_culturaldiversity, na.rm = TRUE),
     ) %>%
-  rename(cntry = Country)
+  rename(cntry = Country) %>% 
+  left_join(read_excel("data/EBU-MIS-DATASET_2021_Trust_in_Media-1.xlsx", sheet = "Ark2"), on="cntry") %>%
+  mutate(trust_in_tv = ifelse(trust_in_tv == 'x', NA, as.numeric(trust_in_tv))) %>%
+  # z-standardize on level 2
+  mutate(
+    z_share_generalimmigration_claims = std(share_generalimmigration_claims),
+    z_generalimmigration_mean_direction = std(generalimmigration_mean_direction),
+    z_trust_in_tv = std(trust_in_tv)
+  )
+
+  
 
 
 
@@ -81,6 +93,9 @@ ess <- import_rounds(rounds = 7, ess_email = "madslangs@gmail.com") %>%
   mutate(general_treat = unlist(lapply(imwbcnt, function(x){return(10 - x)}))) %>%
   mutate(xeno = cultural_treat + general_treat) %>%
   mutate(tvdif = tvtot - tvpol) %>%
+  mutate(unemployed = case_when(uempla == 1 ~ 1,
+                                uempli == 1 ~ 1,
+                                TRUE ~ 0)) %>%
   mutate(
     smegbli = zap_labels(smegbli),
     smegbhw = zap_labels(smegbhw),
@@ -90,11 +105,21 @@ ess <- import_rounds(rounds = 7, ess_email = "madslangs@gmail.com") %>%
     smctmbe = ifelse(smctmbe == 2, 0, smctmbe),
     classic_racism_index = smegbli + smegbhw + smctmbe
   ) %>%
-  select(cntry, tvtot, tvpol, tvdif, cultural_treat, general_treat, classic_racism_index, pspwght, eisced, agea, xeno) %>%
-  #inner_join(press_df, on ="cntry") %>%
+  select(cntry, tvtot, tvpol, tvdif, cultural_treat, general_treat, classic_racism_index, pspwght, eisced, agea, xeno, unemployed) %>%
+  # z-standardize
+  mutate(
+    z_xeno = std(xeno),
+    z_tvtot = std(tvtot),
+    z_tvpol = std(tvpol),
+    z_tvdif = std(tvdif),
+    z_eisced = std(eisced),
+    z_agea = std(agea)
+  ) %>%
   left_join(media_claims, on ="cntry") %>%
-  filter(!is.na(share_generalimmigration_claims)) %>%
-  filter(!is.na( + generalimmigration_mean_direction))
+  filter(!is.na(z_share_generalimmigration_claims)) %>%
+  filter(!is.na(z_generalimmigration_mean_direction)) %>%
+  filter(!is.na(z_trust_in_tv)) %>%
+  rename(Country=cntry)
 
 
 
@@ -124,14 +149,14 @@ ggsave("outputs/outcome.png", dpi= 600, width = 7, height = 5)
 
 
 
-# TVPOL
+# TVTOT
 
-p <- ggplot(data = ess, aes(y = xeno, x = tvpol, weight = pspwght, color=cntry, fill=cntry, alpha=pspwght)) +
+p <- ggplot(data = ess, aes(y = xeno, x = tvtot, weight = pspwght, color=Country, fill=Country, alpha=pspwght)) +
   geom_jitter(color="grey") +
   geom_smooth(method = "lm", formula = "y ~ x", se = FALSE) + 
   theme_light() + 
   guides(alpha = "none") +
-  labs(y = "Xenophobic threat", x = "TV watching, news/politics/current affairs") +
+  labs(y = "Xenophobic threat", x = "TV watching") +
   theme(legend.title = element_blank(),
         text=element_text(family="serif"),
         axis.title=element_text(size=14,face="bold"),
@@ -143,7 +168,7 @@ ggsave("outputs/scatterplot.png", dpi= 600, width = 7, height = 5)
 
 
 # TVDIF
-p <- ggplot(data = ess, aes(y = xeno, x = tvdif, weight = pspwght, color=cntry, fill=cntry, alpha=pspwght)) +
+p <- ggplot(data = ess, aes(y = xeno, x = tvdif, weight = pspwght, color=Country, fill=cntry, alpha=pspwght)) +
   geom_jitter(color="grey") +
   geom_smooth(method = "lm", formula = "y ~ x", se = FALSE) + 
   theme_light() + 
@@ -162,12 +187,12 @@ p
 # Media salience
 
 temp <- ess %>%
-  group_by(cntry) %>%
+  group_by(Country) %>%
   summarise(x = first(share_generalimmigration_claims),
             y = mean(xeno, na.rm=F))
 
 
-p <- ggplot(temp, aes(x = x, y = y, label = cntry)) + 
+p <- ggplot(temp, aes(x = x, y = y, label = Country)) + 
   geom_point() + 
   geom_smooth(method = "lm", formula = "y ~ x") +
   geom_text(vjust=-0.4, check_overlap = TRUE) +
@@ -180,12 +205,12 @@ ggsave("outputs/media_salience.png", dpi= 600, width = 7, height = 5)
 # Media sentiment
 
 temp <- ess %>%
-  group_by(cntry) %>%
+  group_by(Country) %>%
   summarise(x = first(generalimmigration_mean_direction),
             y = mean(xeno, na.rm=F))
 
 
-p <- ggplot(temp, aes(x = x, y = y, label = cntry)) + 
+p <- ggplot(temp, aes(x = x, y = y, label = Country)) + 
   geom_point() + 
   geom_smooth(method = "lm", formula = "y ~ x") +
   geom_text(vjust=-0.4, check_overlap = TRUE) +
@@ -193,6 +218,24 @@ p <- ggplot(temp, aes(x = x, y = y, label = cntry)) +
   theme_light()
 p
 ggsave("outputs/media_sentiment.png", dpi= 600, width = 7, height = 5)
+
+# Media trust
+
+temp <- ess %>%
+  group_by(Country) %>%
+  summarise(x = first(trust_in_tv),
+            y = mean(xeno, na.rm=F)) 
+
+
+p <- ggplot(temp, aes(x = x, y = y, label = Country)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", formula = "y ~ x") +
+  geom_text(vjust=-0.4, check_overlap = TRUE) +
+  labs(y = "Xenophobic threat", x = "Media trust") +
+  theme_light()
+p
+ggsave("outputs/media_trust.png", dpi= 600, width = 7, height = 5)
+
 
 
 
@@ -204,49 +247,75 @@ ggsave("outputs/media_sentiment.png", dpi= 600, width = 7, height = 5)
 
 # Model 1
 
+
 m1 <- lmer(
     #outcome
-    xeno ~ 
+    z_xeno ~ 
     # main level 1 predictor
-    tvtot + 
-    # random intercept
-    (1 | cntry), 
+    z_tvtot + 
+    # controls
+    z_agea + 
+    z_eisced + 
+    #unemployed +
+    # random intercept + random slope
+    (1 + z_tvtot | Country),
   data = ess, 
   weights = pspwght
 )
+m1_t <- lmer_t(m1, method = "Satterthwaite")
+summary(m1_t)
+
 
 
 # Model 2
 
 m2 <- lmer(
     #outcome
-    xeno ~ 
+    z_xeno ~ 
     # level 1 predictor
-    tvpol + 
+    z_tvtot + 
+    # controls
+    z_agea + 
+    z_eisced + 
+    #z_unemployed +
     # level 2 predictors
-    share_generalimmigration_claims + 
-    generalimmigration_mean_direction + 
-    # random intercept
-    (1 | cntry), 
+    z_share_generalimmigration_claims + 
+    z_generalimmigration_mean_direction + 
+    z_trust_in_tv +
+    # random intercept + random slope
+    (1 + z_tvtot | Country),
   data = ess, 
   weights = pspwght
 )
+m2_t <- lmer_t(m2, method = "Satterthwaite")
+summary(m2_t)
 
 # Model 3
 
 m3 <- lmer(
   #outcome
-  xeno ~
+  z_xeno ~
   # level 1 predictor
-  tvpol + 
+  z_tvtot + 
+  # controls
+  z_agea + 
+  z_eisced + 
+  #z_unemployed +
   # level 2 predictors
-  share_generalimmigration_claims + 
-  generalimmigration_mean_direction + 
+  z_share_generalimmigration_claims + 
+  z_generalimmigration_mean_direction + 
+  z_trust_in_tv + 
+  # cross-level-interactions
+  z_tvtot*z_share_generalimmigration_claims +
+  z_tvtot*z_generalimmigration_mean_direction + 
+  z_tvtot*z_trust_in_tv + 
   # random intercept + random slope
-  (1 + tvpol | cntry),
+  (1 + z_tvtot | Country),
   data = ess, 
   weights = pspwght
 )
+m3_t <- lmer_t(m3, method = "Satterthwaite")
+summary(m3_t)
 
 
 # write model outputs to beautiful table! 
@@ -254,7 +323,20 @@ htmlreg(
   list(m1,m2,m3), 
   file="outputs/reg_output.html", 
   include.ci = FALSE, 
+  custom.coef.names = c(
+    "Intercept",
+    "TV watching",
+    "Age",
+    "Education",
+    "Media salience",
+    "Media sentiment",
+    "Media trust",
+    "TV watching:Media salience",
+    "TV watching:Media sentiment",
+    "TV watching:Media trust"
+  ),
   digits = 3,
+  caption = "",
   custom.gof.rows = list("ICC" = c(
     paste0(round(icc(m1)*100, digits=2),"%"), 
     paste0(round(icc(m2)*100, digits=2),"%"), 
@@ -263,7 +345,7 @@ htmlreg(
   )
 )
 
-
+summary(m3)
 
 
 ################################################################################
@@ -295,25 +377,29 @@ p1
 ### DFBETAS
 
 # Estimate -j models
-one_out_models <- influence(model = m3, group = "cntry")
+one_out_models <- influence(model = m3, group = "Country")
 
 # Calculate the DFBETAs and turn into tibble
 DFBETAs <- dfbetas(one_out_models) %>% 
   data.frame() %>% 
   rownames_to_column() %>% 
   as_tibble() %>%
-  select(rowname, tvpol,share_generalimmigration_claims, generalimmigration_mean_direction)
+  select(rowname, z_tvtot,z_share_generalimmigration_claims, z_generalimmigration_mean_direction, z_trust_in_tv)
 
 
 # Reshape to long
 DFBETAs <- pivot_longer(
   DFBETAs, 
-  cols = c("tvpol", "share_generalimmigration_claims","generalimmigration_mean_direction"), 
-  names_to = "Variable")
+  cols = c("z_tvtot", "z_share_generalimmigration_claims","z_generalimmigration_mean_direction","z_trust_in_tv"), 
+  names_to = "variable") %>%
+  mutate(variable = case_when(variable == "z_tvtot" ~ "TV watching",
+                              variable == "z_share_generalimmigration_claims" ~ "Media \n Salience",
+                              variable == "z_generalimmigration_mean_direction" ~ "Media \nsentiment",
+                              variable =="z_trust_in_tv" ~ "Media trust"))
 
 # Plot the results
 p2 <- ggplot(data = DFBETAs, 
-             aes(y = value, x = Variable, label = rowname)) +
+             aes(y = value, x = variable, label = rowname)) +
   geom_violin(fill = "gray", color="gray", alpha=0.5) +
   geom_point(position=position_jitter(width=0.1,height=0), size=1, color="black", alpha=0.5) +
   geom_text_repel(size=3, arrow=arrow(angle = 30, length = unit(0.03, "inches"),
@@ -323,6 +409,8 @@ p2 <- ggplot(data = DFBETAs,
   theme_minimal() +
   labs(y = "DFBETA")
 p2
+ggsave("outputs/dfbetas.png", dpi= 600, width = 8, height = 5)
+
 
 
 

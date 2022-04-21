@@ -9,3 +9,10 @@ icc <- function(model){
     filter(term == "sd__(Intercept)")
   return(icc$icc)
 }
+
+
+std <- function(x) {
+  # Merlin's function to z-standardize
+  
+  (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+}
