@@ -2,10 +2,10 @@
 
 rm(list = ls())
 options(scipen=999)
-devtools::install_github("melff/iimm")
+#devtools::install_github("melff/iimm")
 pacman::p_load("haven","dplyr","estimatr","texreg",
                "essurvey","ggplot2","stats","factoextra","rmarkdown",
-               "lme4","readxl","countrycode","RColorBrewer","sjPlot", 
+               "lme4","readxl","countrycode","RColorBrewer","sjPlot","ggridges",
                "tidyverse","ggrepel","influence.ME", "cowplot","broom.mixed","iimm")
 source("utils.R")
 
@@ -65,13 +65,13 @@ media_claims <- as.data.frame(read_sav("data/ESS7MCe01.spss/ESS7MCe01.sav")) %>%
     culturaldiversity_mean_direction = mean(direction_culturaldiversity, na.rm = TRUE),
     ) %>%
   rename(cntry = Country) %>% 
-  left_join(read_excel("data/EBU-MIS-DATASET_2021_Trust_in_Media-1.xlsx", sheet = "Ark2"), on="cntry") %>%
-  mutate(trust_in_tv = ifelse(trust_in_tv == 'x', NA, as.numeric(trust_in_tv))) %>%
+  left_join(read_excel("data/Budget-in-terms-of-GDP.xlsx") %>% rename(cntry = Country), on="cntry") %>%
+  rename(public_spend_inh = Inhabitant) %>%
   # z-standardize on level 2
   mutate(
     z_share_generalimmigration_claims = std(share_generalimmigration_claims),
     z_generalimmigration_mean_direction = std(generalimmigration_mean_direction),
-    z_trust_in_tv = std(trust_in_tv)
+    z_public_spend_inh = std(public_spend_inh)
   )
 
   
@@ -82,7 +82,8 @@ media_claims <- as.data.frame(read_sav("data/ESS7MCe01.spss/ESS7MCe01.sav")) %>%
 
 # Read ESS data
 
-ess <- import_rounds(rounds = 7, ess_email = "madslangs@gmail.com") %>%
+source("credentials.R")
+ess <- import_rounds(rounds = 7, ess_email = my_email) %>%
   recode_missings() %>%
   as.data.frame() %>%
   filter(!is.na(imueclt)) %>%
@@ -96,16 +97,7 @@ ess <- import_rounds(rounds = 7, ess_email = "madslangs@gmail.com") %>%
   mutate(unemployed = case_when(uempla == 1 ~ 1,
                                 uempli == 1 ~ 1,
                                 TRUE ~ 0)) %>%
-  mutate(
-    smegbli = zap_labels(smegbli),
-    smegbhw = zap_labels(smegbhw),
-    smctmbe = zap_labels(smctmbe),
-    smegbli = ifelse(smegbli == 2, 0, smegbli),
-    smegbhw = ifelse(smegbhw == 2, 0, smegbhw),
-    smctmbe = ifelse(smctmbe == 2, 0, smctmbe),
-    classic_racism_index = smegbli + smegbhw + smctmbe
-  ) %>%
-  select(cntry, tvtot, tvpol, tvdif, cultural_treat, general_treat, classic_racism_index, pspwght, eisced, agea, xeno, unemployed) %>%
+  select(cntry, tvtot, tvpol, tvdif, cultural_treat, general_treat,pspwght, eisced, agea, xeno, unemployed) %>%
   # z-standardize
   mutate(
     z_xeno = std(xeno),
@@ -118,9 +110,10 @@ ess <- import_rounds(rounds = 7, ess_email = "madslangs@gmail.com") %>%
   left_join(media_claims, on ="cntry") %>%
   filter(!is.na(z_share_generalimmigration_claims)) %>%
   filter(!is.na(z_generalimmigration_mean_direction)) %>%
-  filter(!is.na(z_trust_in_tv)) %>%
+  filter(!is.na(z_public_spend_inh)) %>%
+  filter(!is.na(agea)) %>%
+  filter(!is.na(eisced)) %>%
   rename(Country=cntry)
-
 
 
 
@@ -147,16 +140,33 @@ p
 ggsave("outputs/outcome.png", dpi= 600, width = 7, height = 5)
 
 
+# Outcome: 
+temp <- ess %>%
+  group_by(Country) %>%
+  summarise(m = mean(xeno),
+            s = sd(xeno)) %>%
+  arrange(m)
+
+p <- ggplot(ess, aes(x = factor(Country, levels=temp$Country), y = xeno)) +
+  geom_jitter(color="grey", width = 0.2, alpha=0.5) +
+  geom_point(data=temp, aes(x=Country, y=m)) +
+  geom_linerange(data=temp, aes(x = Country, y=m, ymin=m-s, ymax=m+s)) +
+  labs(y = "Xenophobic treat", x = "Country") +
+  theme_light()
+p
+ggsave("outputs/outcome_variation.png", dpi= 600, width = 7, height = 5)
 
 
-# TVTOT
 
-p <- ggplot(data = ess, aes(y = xeno, x = tvtot, weight = pspwght, color=Country, fill=Country, alpha=pspwght)) +
+
+# TVPOL
+
+p <- ggplot(data = ess, aes(y = xeno, x = tvpol, weight = pspwght, color=Country, fill=Country, alpha=pspwght)) +
   geom_jitter(color="grey") +
   geom_smooth(method = "lm", formula = "y ~ x", se = FALSE) + 
   theme_light() + 
   guides(alpha = "none") +
-  labs(y = "Xenophobic threat", x = "TV watching") +
+  labs(y = "Xenophobia", x = "News consumption") +
   theme(legend.title = element_blank(),
         text=element_text(family="serif"),
         axis.title=element_text(size=14,face="bold"),
@@ -196,7 +206,7 @@ p <- ggplot(temp, aes(x = x, y = y, label = Country)) +
   geom_point() + 
   geom_smooth(method = "lm", formula = "y ~ x") +
   geom_text(vjust=-0.4, check_overlap = TRUE) +
-  labs(y = "Xenophobic threat", x = "Media salience of immigration (% of claims)") +
+  labs(y = "Xenophobia", x = "Media salience of immigration (% of claims)") +
   theme_light()
 p
 ggsave("outputs/media_salience.png", dpi= 600, width = 7, height = 5)
@@ -214,16 +224,16 @@ p <- ggplot(temp, aes(x = x, y = y, label = Country)) +
   geom_point() + 
   geom_smooth(method = "lm", formula = "y ~ x") +
   geom_text(vjust=-0.4, check_overlap = TRUE) +
-  labs(y = "Xenophobic threat", x = "Media sentiment on immigration") +
+  labs(y = "Xenophobia", x = "Media sentiment on immigration") +
   theme_light()
 p
 ggsave("outputs/media_sentiment.png", dpi= 600, width = 7, height = 5)
 
-# Media trust
+# Public spending
 
 temp <- ess %>%
   group_by(Country) %>%
-  summarise(x = first(trust_in_tv),
+  summarise(x = first(public_spend_inh),
             y = mean(xeno, na.rm=F)) 
 
 
@@ -231,10 +241,10 @@ p <- ggplot(temp, aes(x = x, y = y, label = Country)) +
   geom_point() + 
   geom_smooth(method = "lm", formula = "y ~ x") +
   geom_text(vjust=-0.4, check_overlap = TRUE) +
-  labs(y = "Xenophobic threat", x = "Media trust") +
+  labs(y = "Xenophobia", x = "Spending on public broadcasting") +
   theme_light()
 p
-ggsave("outputs/media_trust.png", dpi= 600, width = 7, height = 5)
+ggsave("outputs/media_spending.png", dpi= 600, width = 7, height = 5)
 
 
 
@@ -248,22 +258,76 @@ ggsave("outputs/media_trust.png", dpi= 600, width = 7, height = 5)
 # Model 1
 
 
-m1 <- lmer(
+m11 <- lmer(
     #outcome
     z_xeno ~ 
     # main level 1 predictor
-    z_tvtot + 
+    z_tvpol + 
     # controls
     z_agea + 
     z_eisced + 
     #unemployed +
     # random intercept + random slope
-    (1 + z_tvtot | Country),
+    (1 | Country),
   data = ess, 
   weights = pspwght
 )
-m1_t <- lmer_t(m1, method = "Satterthwaite")
-summary(m1_t)
+# get correct p-values using Satterthaite method
+m11_t <- lmer_t(m11, method = "Satterthwaite")
+m11_out <- texreg::extract(m11)
+m11_out@pvalues <- summary(m11_t)$coef[,7]
+
+m12 <- lmer(
+  #outcome
+  z_xeno ~ 
+    # main level 1 predictor
+    z_tvpol + 
+    # controls
+    z_agea + 
+    z_eisced + 
+    #unemployed +
+    # random intercept + random slope
+    (1 + z_tvpol | Country),
+  data = ess, 
+  weights = pspwght
+)
+# get correct p-values using Satterthaite method
+m12_t <- lmer_t(m12, method = "Satterthwaite")
+m12_out <- texreg::extract(m12)
+m12_out@pvalues <- summary(m12_t)$coef[,7]
+
+
+
+# write model outputs to beautiful table! 
+htmlreg(
+  list(m11_out,m12_out), 
+  file="outputs/reg_output1.html", 
+  include.ci = FALSE, 
+  custom.coef.names = c(
+    "Intercept",
+    "News consumption",
+    "Age",
+    "Education"
+  ),
+  custom.model.names = c(
+    "Model 1a (Random Intercept, Fixed Slope)",
+    "Model 1b (Random Intercept, Random Slope)"
+  ),
+  groups = c(
+    "Intercept" = list(1:1),
+    "Individual level predictor" = list(2:2),
+    "Invididual level controls" = list(3:4)
+  ),
+  digits = 3,
+  caption = "",
+  custom.gof.rows = list("ICC" = c(
+    paste0(round(icc(m11)*100, digits=2),"%"), 
+    paste0(round(icc(m12)*100, digits=2),"%")
+  )
+  )
+)
+
+
 
 
 
@@ -273,7 +337,7 @@ m2 <- lmer(
     #outcome
     z_xeno ~ 
     # level 1 predictor
-    z_tvtot + 
+    z_tvpol + 
     # controls
     z_agea + 
     z_eisced + 
@@ -281,14 +345,50 @@ m2 <- lmer(
     # level 2 predictors
     z_share_generalimmigration_claims + 
     z_generalimmigration_mean_direction + 
-    z_trust_in_tv +
+    z_public_spend_inh +
     # random intercept + random slope
-    (1 + z_tvtot | Country),
+    (1 + z_tvpol | Country),
   data = ess, 
   weights = pspwght
 )
+# get correct p-values using Satterthaite method
 m2_t <- lmer_t(m2, method = "Satterthwaite")
-summary(m2_t)
+m2_out <- texreg::extract(m2)
+m2_out@pvalues <- summary(m2_t)$coef[,7]
+
+
+# write model outputs to beautiful table! 
+htmlreg(
+  list(m2_out), 
+  file="outputs/reg_output2.html", 
+  include.ci = FALSE, 
+  custom.coef.names = c(
+    "Intercept",
+    "News consumption",
+    "Age",
+    "Education",
+    "Media salience",
+    "Media sentiment",
+    "Public broadcast spending"
+  ),
+  custom.model.names = c(
+    "Model 2"
+  ),
+  groups = c(
+    "Intercept" = list(1:1),
+    "Individual level predictor" = list(2:2),
+    "Invididual level controls" = list(3:4),
+    "Country level predictors" = list(5:7)
+  ),
+  digits = 3,
+  caption = "",
+  custom.gof.rows = list("ICC" = c(
+    paste0(round(icc(m2)*100, digits=2),"%")
+  )
+  )
+)
+
+
 
 # Model 3
 
@@ -296,7 +396,7 @@ m3 <- lmer(
   #outcome
   z_xeno ~
   # level 1 predictor
-  z_tvtot + 
+  z_tvpol + 
   # controls
   z_agea + 
   z_eisced + 
@@ -304,48 +404,138 @@ m3 <- lmer(
   # level 2 predictors
   z_share_generalimmigration_claims + 
   z_generalimmigration_mean_direction + 
-  z_trust_in_tv + 
+  z_public_spend_inh + 
   # cross-level-interactions
-  z_tvtot*z_share_generalimmigration_claims +
-  z_tvtot*z_generalimmigration_mean_direction + 
-  z_tvtot*z_trust_in_tv + 
+  z_tvpol*z_share_generalimmigration_claims +
+  #z_tvpol*z_generalimmigration_mean_direction + 
+  #z_tvpol*z_public_spend_inh + 
   # random intercept + random slope
-  (1 + z_tvtot | Country),
+  (1 + z_tvpol | Country),
   data = ess, 
   weights = pspwght
 )
+# get correct p-values using Satterthaite method
 m3_t <- lmer_t(m3, method = "Satterthwaite")
-summary(m3_t)
+m3_out <- texreg::extract(m3)
+m3_out@pvalues <- summary(m3_t)$coef[,7]
 
+# Model 4
+
+m4 <- lmer(
+  #outcome
+  z_xeno ~
+    # level 1 predictor
+    z_tvpol + 
+    # controls
+    z_agea + 
+    z_eisced + 
+    #z_unemployed +
+    # level 2 predictors
+    z_share_generalimmigration_claims + 
+    z_generalimmigration_mean_direction + 
+    z_public_spend_inh + 
+    # cross-level-interactions
+    #z_tvpol*z_share_generalimmigration_claims +
+    z_tvpol*z_generalimmigration_mean_direction + 
+    #z_tvpol*z_public_spend_inh + 
+    # random intercept + random slope
+    (1 + z_tvpol | Country),
+  data = ess, 
+  weights = pspwght
+)
+# get correct p-values using Satterthaite method
+m4_t <- lmer_t(m4, method = "Satterthwaite")
+m4_out <- texreg::extract(m4)
+m4_out@pvalues <- summary(m4_t)$coef[,7]
+
+# Model 5
+
+m5 <- lmer(
+  #outcome
+  z_xeno ~
+    # level 1 predictor
+    z_tvpol + 
+    # controls
+    z_agea + 
+    z_eisced + 
+    #z_unemployed +
+    # level 2 predictors
+    z_share_generalimmigration_claims + 
+    z_generalimmigration_mean_direction + 
+    z_public_spend_inh + 
+    # cross-level-interactions
+    #z_tvpol*z_share_generalimmigration_claims +
+    #z_tvpol*z_generalimmigration_mean_direction + 
+    z_tvpol*z_public_spend_inh + 
+    # random intercept + random slope
+    (1 + z_tvpol | Country),
+  data = ess, 
+  weights = pspwght
+)
+# get correct p-values using Satterthaite method
+m5_t <- lmer_t(m5, method = "Satterthwaite")
+m5_out <- texreg::extract(m5)
+m5_out@pvalues <- summary(m5_t)$coef[,7]
 
 # write model outputs to beautiful table! 
 htmlreg(
-  list(m1,m2,m3), 
-  file="outputs/reg_output.html", 
+  list(m3_out,m4_out,m5_out), 
+  file="outputs/reg_output3.html", 
   include.ci = FALSE, 
   custom.coef.names = c(
     "Intercept",
-    "TV watching",
+    "News consumption",
     "Age",
     "Education",
     "Media salience",
     "Media sentiment",
-    "Media trust",
+    "Public broadcast spending",
     "TV watching:Media salience",
     "TV watching:Media sentiment",
-    "TV watching:Media trust"
+    "TV watching:Public broadcast spending"
+  ),
+  custom.model.names = c(
+    "Model 3",
+    "Model 4",
+    "Model 5"
+  ),
+  groups = c(
+    "Intercept" = list(1:1),
+    "Individual level predictor" = list(2:2),
+    "Invididual level controls" = list(3:4),
+    "Country level predictors" = list(5:7),
+    "Cross-level interactions" = list(8:10)
   ),
   digits = 3,
   caption = "",
   custom.gof.rows = list("ICC" = c(
-    paste0(round(icc(m1)*100, digits=2),"%"), 
-    paste0(round(icc(m2)*100, digits=2),"%"), 
-    paste0(round(icc(m3)*100, digits=2),"%")
+    paste0(round(icc(m3)*100, digits=2),"%"),
+    paste0(round(icc(m4)*100, digits=2),"%"),
+    paste0(round(icc(m5)*100, digits=2),"%")
     )
   )
 )
 
-summary(m3)
+
+
+
+
+
+
+
+### Residual plot ###
+
+temp <- ess %>%
+  mutate(preds = predict(m3)) %>%
+  mutate(res = z_xeno - preds)
+
+p <- ggplot(temp, aes(x=res, y = Country)) +
+  geom_density_ridges() +
+  scale_color_manual(values = mycolors) +
+  theme_light()
+p
+ggsave("outputs/m3_residuals.png", dpi= 600, width = 7, height = 5)
+
 
 
 ################################################################################
@@ -356,11 +546,11 @@ summary(m3)
 
 ### BLUPS
 
-blups <- as.data.frame(ranef(m3) %>% as_tibble()) %>% 
+blups <- as.data.frame(ranef(m1) %>% as_tibble()) %>% 
   spread(term, condval) %>%
   group_by(grp) %>%
   summarise(intcpt = `(Intercept)`[which(!is.na(`(Intercept)`))[1]],
-            slope = tvpol[which(!is.na(tvpol))[1]])
+            slope = z_tvpol[which(!is.na(z_tvpol))[1]])
 
 p1 <- ggplot(blups) + 
   geom_abline(aes(slope = slope, intercept = intcpt, color=slope)) + 
