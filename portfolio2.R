@@ -3,7 +3,7 @@
 rm(list = ls())
 options(scipen=999)
 #devtools::install_github("melff/iimm")
-pacman::p_load("haven","dplyr","estimatr","texreg",
+pacman::p_load("haven","dplyr","estimatr","texreg","stargazer",
                "essurvey","ggplot2","stats","factoextra","rmarkdown",
                "lme4","readxl","countrycode","RColorBrewer","sjPlot","ggridges",
                "tidyverse","ggrepel","influence.ME", "cowplot","broom.mixed","iimm")
@@ -255,6 +255,20 @@ ggsave("outputs/media_spending.png", dpi= 600, width = 7, height = 5)
 #
 ################################################################################
 
+# Model 0 (empty random intercept model)
+
+m0 <- lmer(
+  #outcome
+  z_xeno ~ 
+    # random intercept 
+    (1 | Country),
+  data = ess, 
+  weights = pspwght
+)
+icc(m0)
+
+
+
 # Model 1
 
 
@@ -267,7 +281,7 @@ m11 <- lmer(
     z_agea + 
     z_eisced + 
     #unemployed +
-    # random intercept + random slope
+    # random intercept 
     (1 | Country),
   data = ess, 
   weights = pspwght
@@ -310,8 +324,8 @@ htmlreg(
     "Education"
   ),
   custom.model.names = c(
-    "Model 1a (Random Intercept, Fixed Slope)",
-    "Model 1b (Random Intercept, Random Slope)"
+    "Model 1a (RI, FS)",
+    "Model 1b (RI, RS)"
   ),
   groups = c(
     "Intercept" = list(1:1),
@@ -320,12 +334,19 @@ htmlreg(
   ),
   digits = 3,
   caption = "",
+  custom.note = paste(
+    "***p < 0.001; **p < 0.01; *p < 0.05",
+    "Explanation of abbreviations: RI = Random Intercept, FS = Fixed Slope, RS = Random Slope"
+  ),
+  threeparttable = TRUE,
   custom.gof.rows = list("ICC" = c(
     paste0(round(icc(m11)*100, digits=2),"%"), 
     paste0(round(icc(m12)*100, digits=2),"%")
   )
   )
 )
+
+
 
 
 
@@ -407,8 +428,8 @@ m3 <- lmer(
   z_public_spend_inh + 
   # cross-level-interactions
   z_tvpol*z_share_generalimmigration_claims +
-  #z_tvpol*z_generalimmigration_mean_direction + 
-  #z_tvpol*z_public_spend_inh + 
+  z_tvpol*z_generalimmigration_mean_direction + 
+  z_tvpol*z_public_spend_inh + 
   # random intercept + random slope
   (1 + z_tvpol | Country),
   data = ess, 
@@ -548,9 +569,15 @@ ggsave("outputs/m3_residuals.png", dpi= 600, width = 7, height = 5)
 
 blups <- as.data.frame(ranef(m1) %>% as_tibble()) %>% 
   spread(term, condval) %>%
+  mutate(grp = as.character(grp)) %>%
   group_by(grp) %>%
-  summarise(intcpt = `(Intercept)`[which(!is.na(`(Intercept)`))[1]],
-            slope = z_tvpol[which(!is.na(z_tvpol))[1]])
+  summarise(Intercept = `(Intercept)`[which(!is.na(`(Intercept)`))[1]],
+            Slope = z_tvpol[which(!is.na(z_tvpol))[1]]) %>%
+  arrange(Slope) %>%
+  rename(Country=grp) %>%
+  mutate_if(is.numeric, round, 3)
+
+stargazer(blups, type='html', out="test.html", out.header=TRUE, summary=FALSE, rownames = FALSE)
 
 p1 <- ggplot(blups) + 
   geom_abline(aes(slope = slope, intercept = intcpt, color=slope)) + 
