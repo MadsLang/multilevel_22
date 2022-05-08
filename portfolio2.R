@@ -3,7 +3,7 @@
 rm(list = ls())
 options(scipen=999)
 #devtools::install_github("melff/iimm")
-pacman::p_load("haven","dplyr","estimatr","texreg","stargazer",
+pacman::p_load("haven","dplyr","estimatr","texreg","stargazer","parameters",
                "essurvey","ggplot2","stats","factoextra","rmarkdown",
                "lme4","readxl","countrycode","RColorBrewer","sjPlot","ggridges",
                "tidyverse","ggrepel","influence.ME", "cowplot","broom.mixed","iimm")
@@ -113,8 +113,12 @@ ess <- import_rounds(rounds = 7, ess_email = my_email) %>%
   filter(!is.na(z_public_spend_inh)) %>%
   filter(!is.na(agea)) %>%
   filter(!is.na(eisced)) %>%
-  rename(Country=cntry)
-
+  rename(Country=cntry) %>%
+  #rescale the weights! 
+  rescale_weights(
+    group="Country",
+    probability_weights = "pspwght"
+  )
 
 
 
@@ -286,8 +290,8 @@ m11 <- lmer(
   data = ess, 
   weights = pspwght
 )
-# get correct p-values using Satterthaite method
-m11_t <- lmer_t(m11, method = "Satterthwaite")
+# get correct p-values using Heuristic method
+m11_t <- lmer_t(m11, method = "Heuristic")
 m11_out <- texreg::extract(m11)
 m11_out@pvalues <- summary(m11_t)$coef[,7]
 
@@ -305,12 +309,12 @@ m12 <- lmer(
   data = ess, 
   weights = pspwght
 )
-# get correct p-values using Satterthaite method
-m12_t <- lmer_t(m12, method = "Satterthwaite")
+# get correct p-values using Heuristic method
+m12_t <- lmer_t(m12, method = "Heuristic")
 m12_out <- texreg::extract(m12)
 m12_out@pvalues <- summary(m12_t)$coef[,7]
 
-
+anova(m11,m12, refit = FALSE)
 
 # write model outputs to beautiful table! 
 htmlreg(
@@ -372,8 +376,8 @@ m2 <- lmer(
   data = ess, 
   weights = pspwght
 )
-# get correct p-values using Satterthaite method
-m2_t <- lmer_t(m2, method = "Satterthwaite")
+# get correct p-values using Heuristic method
+m2_t <- lmer_t(m2, method = "Heuristic")
 m2_out <- texreg::extract(m2)
 m2_out@pvalues <- summary(m2_t)$coef[,7]
 
@@ -428,15 +432,15 @@ m3 <- lmer(
   z_public_spend_inh + 
   # cross-level-interactions
   z_tvpol*z_share_generalimmigration_claims +
-  z_tvpol*z_generalimmigration_mean_direction + 
-  z_tvpol*z_public_spend_inh + 
+  #z_tvpol*z_generalimmigration_mean_direction + 
+  #z_tvpol*z_public_spend_inh + 
   # random intercept + random slope
   (1 + z_tvpol | Country),
   data = ess, 
   weights = pspwght
 )
-# get correct p-values using Satterthaite method
-m3_t <- lmer_t(m3, method = "Satterthwaite")
+# get correct p-values using Heuristic method
+m3_t <- lmer_t(m3, method = "Heuristic")
 m3_out <- texreg::extract(m3)
 m3_out@pvalues <- summary(m3_t)$coef[,7]
 
@@ -464,8 +468,8 @@ m4 <- lmer(
   data = ess, 
   weights = pspwght
 )
-# get correct p-values using Satterthaite method
-m4_t <- lmer_t(m4, method = "Satterthwaite")
+# get correct p-values using Heuristic method
+m4_t <- lmer_t(m4, method = "Heuristic")
 m4_out <- texreg::extract(m4)
 m4_out@pvalues <- summary(m4_t)$coef[,7]
 
@@ -493,8 +497,8 @@ m5 <- lmer(
   data = ess, 
   weights = pspwght
 )
-# get correct p-values using Satterthaite method
-m5_t <- lmer_t(m5, method = "Satterthwaite")
+# get correct p-values using Heuristic method
+m5_t <- lmer_t(m5, method = "Heuristic")
 m5_out <- texreg::extract(m5)
 m5_out@pvalues <- summary(m5_t)$coef[,7]
 
@@ -567,7 +571,7 @@ ggsave("outputs/m3_residuals.png", dpi= 600, width = 7, height = 5)
 
 ### BLUPS
 
-blups <- as.data.frame(ranef(m1) %>% as_tibble()) %>% 
+blups <- as.data.frame(ranef(m12) %>% as_tibble()) %>% 
   spread(term, condval) %>%
   mutate(grp = as.character(grp)) %>%
   group_by(grp) %>%
@@ -578,6 +582,18 @@ blups <- as.data.frame(ranef(m1) %>% as_tibble()) %>%
   mutate_if(is.numeric, round, 3)
 
 stargazer(blups, type='html', out="test.html", out.header=TRUE, summary=FALSE, rownames = FALSE)
+
+p <- ggplot(blups, aes(x=factor(Country, levels=Country), y=Slope, fill=Slope)) +
+  geom_bar(stat="identity", width = 0.2) +
+  geom_point(size=3) +
+  labs(y = "BLUPS for slope coefficients", x = "Country") +
+  scale_fill_gradient2(midpoint=0, low="blue", mid="lightgrey",
+                        high="red") +
+  theme_light() %+% theme(legend.title = element_blank())
+p
+ggsave("outputs/blups_slopes.png", dpi= 600, width = 8, height = 5)
+
+
 
 p1 <- ggplot(blups) + 
   geom_abline(aes(slope = slope, intercept = intcpt, color=slope)) + 
