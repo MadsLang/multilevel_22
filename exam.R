@@ -735,19 +735,19 @@ DFBETAs <- pivot_longer(
   ), 
   names_to = "variable") %>%
   mutate(variable = case_when(variable == "z_tvpol" ~ "News Consumption",
-                              variable == "z_share_generalimmigration_claims" ~ "Media \n Salience",
-                              variable == "z_generalimmigration_mean_direction" ~ "Media \nSentiment",
-                              variable =="z_public_spend_inh" ~ "Public Broadcast Spending",
-                              variable == "z_tvpol.z_share_generalimmigration_claims" ~ "News Consumption:\nMedia Salience",
-                              variable == "z_tvpol.z_generalimmigration_mean_direction" ~ "News Consumption:\nMedia Sentiment",
-                              variable == "z_tvpol.z_public_spend_inh" ~ "News Consumption:\nPublic Broadcast Spending"))
+                              variable == "z_share_generalimmigration_claims" ~ "Immigrant \n Visibility",
+                              variable == "z_generalimmigration_mean_direction" ~ "Immigrant \nTone",
+                              variable =="z_public_spend_inh" ~ "Strength of Public Media",
+                              variable == "z_tvpol.z_share_generalimmigration_claims" ~ "News Consumption:\nImmigrant Visibility",
+                              variable == "z_tvpol.z_generalimmigration_mean_direction" ~ "News Consumption:\nImmigrant Tone",
+                              variable == "z_tvpol.z_public_spend_inh" ~ "News Consumption:\nStrength of Public Media"))
 
 # Plot the results
 p2 <- ggplot(data = DFBETAs, 
              aes(
                y = factor(variable, levels=c(
-                 "News Consumption","Media \n Salience","Media \nSentiment","Public Broadcast Spending",
-                 "News Consumption:\nMedia Salience","News Consumption:\nMedia Sentiment","News Consumption:\nPublic Broadcast Spending")), 
+                 "News Consumption","Immigrant \n Visibility","Immigrant \nTone","Strength of Public Media",
+                 "News Consumption:\nImmigrant Visibility","News Consumption:\nImmigrant Tone","News Consumption:\nStrength of Public Media")), 
                x = value, 
                label = rowname)
              ) +
