@@ -118,8 +118,9 @@ ess <- import_rounds(rounds = 7, ess_email = my_email) %>%
   rescale_weights(
     group="Country",
     probability_weights = "pspwght"
-  ) %>%
-  filter(Country != "SE" & Country != "HU" & Country != "DE" & Country != "GB" & Country != "AT")
+  ) #%>%
+  #filter(Country != "SE" & Country != "HU" & Country != "DE" & Country != "GB" & Country != "AT")
+
 
 
 
@@ -156,7 +157,7 @@ p <- ggplot(ess, aes(x = factor(Country, levels=temp$Country), y = xeno)) +
   geom_jitter(color="grey", width = 0.2, alpha=0.5) +
   geom_point(data=temp, aes(x=Country, y=m)) +
   geom_linerange(data=temp, aes(x = Country, y=m, ymin=m-s, ymax=m+s)) +
-  labs(y = "Xenophobic attitude", x = "Country") +
+  labs(y = "Xenophobia", x = "Country") +
   theme_light()
 p
 ggsave("outputs/outcome_variation.png", dpi= 600, width = 7, height = 5)
